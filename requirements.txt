@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+streamlit
+httpx
+requests
+pytest
+psutil
+bcrypt
+aiofiles

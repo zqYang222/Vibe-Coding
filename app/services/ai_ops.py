@@ -99,11 +99,19 @@ async def get_task(task_id: str) -> Optional[Dict[str, Any]]:
     path = _task_path(task_id)
     if not path.is_file():
         return None
-    try:
-        async with aiofiles.open(path, encoding="utf-8") as f:
-            return json.loads(await f.read())
-    except (OSError, json.JSONDecodeError):
-        return None
+    # Retry briefly: update_task() truncates the file while the background
+    # runner polls progress, so a concurrent read can catch partial JSON.
+    for attempt in range(3):
+        try:
+            async with aiofiles.open(path, encoding="utf-8") as f:
+                return json.loads(await f.read())
+        except json.JSONDecodeError:
+            if attempt == 2:
+                return None
+            await asyncio.sleep(0.05)
+        except OSError:
+            return None
+    return None
 
 
 async def update_task(record: Dict[str, Any]) -> None:

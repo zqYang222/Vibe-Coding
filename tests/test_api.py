@@ -308,3 +308,83 @@ def test_reset(client):
     _login(client)
     resp = client.get("/api/problems/")
     assert resp.json()["data"] == []
+
+
+# ---------------- judge statuses: CE / RE / MLE ----------------
+
+def _submit_and_wait(client, problem_id, language, code, tries=150):
+    resp = client.post(
+        "/api/submissions/",
+        json={"problem_id": problem_id, "language": language, "code": code},
+    )
+    assert resp.status_code == 200, resp.text
+    sid = resp.json()["data"]["submission_id"]
+    return sid, _wait_submission(client, sid, tries=tries)
+
+
+def test_compile_error_ce(client):
+    """C++ with a syntax error -> CE on every test point, score 0."""
+    _login(client)
+    _add_problem(client)
+    sid, data = _submit_and_wait(
+        client, "P1001", "cpp", "int main(){ this is not valid c++ }"
+    )
+    assert data["status"] == "success" and data["score"] == 0
+    assert data["compile_info"]["result"] == "failed"
+    log = client.get(f"/api/submissions/{sid}/log").json()["data"]["details"]
+    assert all(d["result"] == "CE" for d in log)
+
+
+def test_runtime_error_re(client):
+    """Python division by zero -> RE, score 0."""
+    _login(client)
+    _add_problem(client)
+    sid, data = _submit_and_wait(client, "P1001", "python", "1 // 0")
+    assert data["status"] == "success" and data["score"] == 0
+    log = client.get(f"/api/submissions/{sid}/log").json()["data"]["details"]
+    assert all(d["result"] == "RE" for d in log)
+
+
+def test_memory_limit_mle(client):
+    """Allocating > memory_limit and holding it -> MLE."""
+    _login(client)
+    _add_problem(client, problem={**PROBLEM, "memory_limit": 64, "time_limit": 10.0})
+    code = "x = bytearray(300 * 1024 * 1024)\nimport time\ntime.sleep(5)\nprint(0)"
+    sid, data = _submit_and_wait(client, "P1001", "python", code, tries=200)
+    assert data["status"] == "success"
+    log = client.get(f"/api/submissions/{sid}/log").json()["data"]["details"]
+    assert any(d["result"] == "MLE" for d in log)
+
+
+def test_submission_list_permissions(client):
+    """Admins see everyone's records for a problem; users only their own."""
+    _login(client)
+    _add_problem(client)
+    _register(client, "alice", "password123")
+    client.post("/api/auth/logout")
+    _login(client, "alice", "password123")
+    client.post(
+        "/api/submissions/",
+        json={"problem_id": "P1001", "language": "python", "code": "print(0)"},
+    )
+    client.post("/api/auth/logout")
+    _login(client)
+    # admin without user_id sees all records of the problem
+    resp = client.get("/api/submissions/", params={"problem_id": "P1001"})
+    assert resp.status_code == 200
+    assert resp.json()["data"]["total"] == 1
+    # pagination rule: page without page_size -> 400
+    resp = client.get(
+        "/api/submissions/", params={"problem_id": "P1001", "page": 1}
+    )
+    assert resp.status_code == 400
+    # regular user without user_id sees only their own (0 here)
+    client.post("/api/auth/logout")
+    _login(client, "alice", "password123")
+    resp = client.get("/api/submissions/", params={"problem_id": "P1001"})
+    assert resp.status_code == 200
+    assert resp.json()["data"]["total"] == 1  # alice's own submission
+    # alice cannot query as another user
+    resp = client.get("/api/submissions/", params={"user_id": "1"})
+    assert resp.status_code == 403
+

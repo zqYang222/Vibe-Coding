@@ -17,6 +17,13 @@ env/
 data/submissions/
 data/users/
 data/logs/
+data/tmp/
+data/languages.json
+data/log_visibility.json
+data/ai/
+
+# Local Q&A notes (course group chat transcript, not part of the deliverable)
+Q&A.txt
 
 # Streamlit local secrets
 .streamlit/secrets.toml

@@ -6,6 +6,7 @@ persisted to a local file so a browser refresh keeps you logged in.
 """
 
 import json
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -810,6 +811,29 @@ def logs_admin_page():
                 st.info("无审计记录")
 
 
+def _import_generated_problem(result):
+    """Import an AI-generated problem, auto-fixing id conflicts/invalid chars."""
+    result = dict(result)
+    original = str(result.get("id") or "").strip()
+    raw = re.sub(r"[^A-Za-z0-9_\-]", "_", original)[:64]
+    if not raw:
+        raw = "problem"
+    okp, existing = api("GET", "/api/problems/", silent=True)
+    existing_ids = {p["id"] for p in existing} if existing else set()
+    candidate = raw
+    n = 1
+    while candidate in existing_ids:
+        candidate = f"{raw}_{n}"
+        n += 1
+    result["id"] = candidate
+    ok2, data = api("POST", "/api/problems/", result)
+    if ok2:
+        if candidate != original:
+            st.success(f"题目已导入（id 已自动调整为「{candidate}」）")
+        else:
+            st.success(f"题目已导入: {candidate}")
+
+
 def ai_page():
     st.title("AI 智能命题")
     if current_user() is None:
@@ -890,9 +914,7 @@ def ai_page():
                 st.subheader("4. 生成结果")
                 st.json(t["result"])
                 if st.button("导入为题目", type="primary"):
-                    ok2, data = api("POST", "/api/problems/", t["result"])
-                    if ok2:
-                        st.success(f"题目已导入: {data['id']}")
+                    _import_generated_problem(t["result"])
             elif t["status"] == "cancelled":
                 st.warning("任务已中断，可重新发起")
             elif t["status"] == "failed":

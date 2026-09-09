@@ -236,10 +236,10 @@ def register_dialog():
 
 def topbar():
     user = current_user()
-    c1, c2, c3 = st.columns([1.4, 4.4, 2.6])
+    c1, c2, c3 = st.columns([1.4, 4.4, 2.6], gap="small")
     with c1:
         st.markdown(
-            '<span style="font-size:1.35rem;font-weight:700;color:#0f1115">'
+            '<span style="font-size:1.3rem;font-weight:700;color:#0f1115">'
             "Online Judge</span>",
             unsafe_allow_html=True,
         )
@@ -254,15 +254,16 @@ def topbar():
             "用户管理": "users",
             "日志审计": "logs",
         }
-        nav = st.columns(len(items))
+        nav = st.columns(len(items), gap="small")
         for i, it in enumerate(items):
             page = mapping[it]
             active = st.session_state.get("page") == page
-            nav[i].button(
+            if nav[i].button(
                 it, key=f"nav_{it}", type="primary" if active else "secondary"
-            ) and go(page)
+            ):
+                go(page)
     with c3:
-        t1, t2 = st.columns([1.3, 1.5])
+        t1, t2 = st.columns([1.5, 1.4], gap="small")
         with t1:
             st.caption(f"🕐 {beijing_now()}")
         with t2:
@@ -277,7 +278,7 @@ def topbar():
                         _clear_auth()
                         go("problems")
             else:
-                l1, l2 = st.columns(2)
+                l1, l2 = st.columns(2, gap="small")
                 if l1.button("登录"):
                     login_dialog()
                 if l2.button("注册"):

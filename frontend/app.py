@@ -190,9 +190,9 @@ def overall_from_details(details):
 
 @st.dialog("登录")
 def login_dialog():
-    username = st.text_input("用户名")
-    password = st.text_input("密码", type="password")
-    if st.button("登录"):
+    username = st.text_input("用户名", key="login_username")
+    password = st.text_input("密码", type="password", key="login_password")
+    if st.button("登录", key="login_submit_btn"):
         ok, data = api(
             "POST", "/api/auth/login", {"username": username, "password": password}
         )
@@ -204,7 +204,7 @@ def login_dialog():
         fp_username = st.text_input("用户名", key="fp_username")
         fp1 = st.text_input("新密码", type="password", key="fp1")
         fp2 = st.text_input("确认新密码", type="password", key="fp2")
-        if st.button("重置密码"):
+        if st.button("重置密码", key="fp_submit_btn"):
             if not fp_username:
                 st.error("请输入用户名")
             elif len(fp1) < 6:
@@ -222,9 +222,9 @@ def login_dialog():
 
 @st.dialog("注册")
 def register_dialog():
-    username = st.text_input("用户名 (3-40字符)")
-    password = st.text_input("密码 (至少6位)", type="password")
-    if st.button("注册"):
+    username = st.text_input("用户名 (3-40字符)", key="reg_username")
+    password = st.text_input("密码 (至少6位)", type="password", key="reg_password")
+    if st.button("注册", key="reg_submit_btn"):
         ok, data = api(
             "POST", "/api/users/", {"username": username, "password": password}
         )
@@ -292,9 +292,9 @@ def topbar():
                         go("problems")
             else:
                 l1, l2 = st.columns(2, gap="small")
-                if l1.button("登录"):
+                if l1.button("登录", key="topbar_login"):
                     login_dialog()
-                if l2.button("注册"):
+                if l2.button("注册", key="topbar_reg"):
                     register_dialog()
     st.markdown("---")
 
@@ -303,34 +303,53 @@ def topbar():
 
 def problem_form(defaults=None):
     d = defaults or {}
-    with st.form(f"problem_form_{'edit' if defaults else 'add'}"):
-        pid = st.text_input("id *", value=d.get("id", ""), disabled=bool(d.get("id")))
-        title = st.text_input("title *", value=d.get("title", ""))
-        description = st.text_area("description *", value=d.get("description", ""))
-        in_desc = st.text_area("input_description *", value=d.get("input_description", ""))
-        out_desc = st.text_area("output_description *", value=d.get("output_description", ""))
+    prefix = "edit" if defaults else "add"
+    with st.form(f"problem_form_{prefix}"):
+        pid = st.text_input(
+            "id *", value=d.get("id", ""), disabled=bool(d.get("id")), key=f"{prefix}_pid"
+        )
+        title = st.text_input("title *", value=d.get("title", ""), key=f"{prefix}_title")
+        description = st.text_area(
+            "description *", value=d.get("description", ""), key=f"{prefix}_desc"
+        )
+        in_desc = st.text_area(
+            "input_description *", value=d.get("input_description", ""), key=f"{prefix}_in"
+        )
+        out_desc = st.text_area(
+            "output_description *", value=d.get("output_description", ""), key=f"{prefix}_out"
+        )
         samples = st.text_area(
             "samples (JSON数组) *",
             value=json.dumps(d.get("samples", []), ensure_ascii=False),
+            key=f"{prefix}_samples",
         )
-        constraints = st.text_area("constraints *", value=d.get("constraints", ""))
+        constraints = st.text_area(
+            "constraints *", value=d.get("constraints", ""), key=f"{prefix}_cons"
+        )
         testcases = st.text_area(
             "testcases (JSON数组) *",
             value=json.dumps(d.get("testcases", []), ensure_ascii=False),
+            key=f"{prefix}_cases",
         )
-        hint = st.text_input("hint (可选)", value=d.get("hint", ""))
-        source = st.text_input("source (可选)", value=d.get("source", ""))
-        tags = st.text_input("tags (逗号分隔，可选)", value=",".join(d.get("tags", [])))
+        hint = st.text_input("hint (可选)", value=d.get("hint", ""), key=f"{prefix}_hint")
+        source = st.text_input("source (可选)", value=d.get("source", ""), key=f"{prefix}_src")
+        tags = st.text_input(
+            "tags (逗号分隔，可选)", value=",".join(d.get("tags", [])), key=f"{prefix}_tags"
+        )
         t_limit = st.text_input(
             "time_limit 秒 (可选)",
             value="" if d.get("time_limit") is None else str(d["time_limit"]),
+            key=f"{prefix}_tl",
         )
         m_limit = st.text_input(
             "memory_limit MB (可选)",
             value="" if d.get("memory_limit") is None else str(d["memory_limit"]),
+            key=f"{prefix}_ml",
         )
-        author = st.text_input("author (可选)", value=d.get("author", ""))
-        difficulty = st.text_input("difficulty (可选)", value=d.get("difficulty", ""))
+        author = st.text_input("author (可选)", value=d.get("author", ""), key=f"{prefix}_author")
+        difficulty = st.text_input(
+            "difficulty (可选)", value=d.get("difficulty", ""), key=f"{prefix}_diff"
+        )
         submitted = st.form_submit_button("保存")
     if not submitted:
         return None
@@ -377,7 +396,7 @@ def problems_page():
     if not ok or not problems:
         st.info("暂无题目，点击上方「新增题目」添加")
         return
-    q = st.text_input("🔍 搜索题目（按题号或标题关键字）")
+    q = st.text_input("🔍 搜索题目（按题号或标题关键字）", key="search_q")
     if q.strip():
         ql = q.strip().lower()
         problems = [
@@ -391,6 +410,17 @@ def problems_page():
     for p in problems:
         if st.button(f"{p['id']} · {p['title']}", key=f"pt_{p['id']}"):
             go("problem_detail", pid=p["id"])
+        okd, d = api("GET", f"/api/problems/{p['id']}", silent=True)
+        meta = []
+        if okd:
+            if d.get("difficulty"):
+                meta.append(f"难度 {d['difficulty']}")
+            if d.get("tags"):
+                meta.append("标签 " + ", ".join(d["tags"]))
+            if d.get("source"):
+                meta.append(f"来源 {d['source']}")
+        if meta:
+            st.caption(" | ".join(meta))
 
 
 def problem_detail_page(pid):
@@ -399,14 +429,14 @@ def problem_detail_page(pid):
         st.error("题目不存在或加载失败")
         return
     user = current_user()
-    if st.button("← 返回题库"):
+    if st.button("← 返回题库", key="back_problems"):
         go("problems")
-    col_title, col_rec = st.columns([4, 1])
+    col_title, col_rec = st.columns([4, 1], vertical_alignment="center")
     with col_title:
         st.header(f"{p['id']} · {p['title']}")
     with col_rec:
         if user:
-            if st.button("📄 提交记录"):
+            if st.button("📄 提交记录", key="detail_records_btn"):
                 go("problem_records", pid=pid)
 
     meta = []
@@ -469,7 +499,7 @@ def problem_detail_page(pid):
         key=f"lang_{pid}",
     )
     code = st.text_area("代码", height=200, key=f"code_{pid}", placeholder="print('hello')")
-    if st.button("提交评测", type="primary"):
+    if st.button("提交评测", type="primary", key=f"submit_btn_{pid}"):
         if not code.strip():
             st.error("代码不能为空")
         else:
@@ -633,9 +663,9 @@ def profile_page():
         f"角色: {me['role']} | 加入时间: {me['join_time']}"
     )
     with st.form("profile_form"):
-        new_username = st.text_input("新用户名（留空则不修改）")
-        old_pw = st.text_input("旧密码（改密码时填写）", type="password")
-        new_pw = st.text_input("新密码（至少6位，留空则不修改）", type="password")
+        new_username = st.text_input("新用户名（留空则不修改）", key="pf_username")
+        old_pw = st.text_input("旧密码（改密码时填写）", type="password", key="pf_oldpw")
+        new_pw = st.text_input("新密码（至少6位，留空则不修改）", type="password", key="pf_newpw")
         if st.form_submit_button("保存"):
             body = {}
             if new_username.strip():
@@ -667,12 +697,12 @@ def languages_page():
         return
     st.subheader("注册新语言（仅登记编译/运行方式，不安装编译器）")
     with st.form("reg_lang"):
-        name = st.text_input("name (如 go)")
-        file_ext = st.text_input("file_ext (如 .go)")
-        compile_cmd = st.text_input("compile_cmd (可选，如 g++ {src} -o {exe})")
-        run_cmd = st.text_input("run_cmd (必填，如 python3 {src} 或 {exe})")
-        t_limit = st.text_input("time_limit 秒 (可选)")
-        m_limit = st.text_input("memory_limit MB (可选)")
+        name = st.text_input("name (如 go)", key="lang_name")
+        file_ext = st.text_input("file_ext (如 .go)", key="lang_ext")
+        compile_cmd = st.text_input("compile_cmd (可选，如 g++ {src} -o {exe})", key="lang_ccmd")
+        run_cmd = st.text_input("run_cmd (必填，如 python3 {src} 或 {exe})", key="lang_rcmd")
+        t_limit = st.text_input("time_limit 秒 (可选)", key="lang_tl")
+        m_limit = st.text_input("memory_limit MB (可选)", key="lang_ml")
         if st.form_submit_button("注册"):
             body = {"name": name, "file_ext": file_ext, "run_cmd": run_cmd}
             if compile_cmd.strip():
@@ -695,19 +725,19 @@ def users_admin_page():
     st.subheader("修改用户角色")
     c1, c2, c3 = st.columns(3)
     with c1:
-        uid = st.selectbox("用户", [u["user_id"] for u in data["users"]])
+        uid = st.selectbox("用户", [u["user_id"] for u in data["users"]], key="role_uid")
     with c2:
-        role = st.selectbox("新角色", ["user", "admin", "banned"])
+        role = st.selectbox("新角色", ["user", "admin", "banned"], key="role_sel")
     with c3:
-        if st.button("修改角色"):
+        if st.button("修改角色", key="role_btn"):
             ok, res = api("PUT", f"/api/users/{uid}/role", {"role": role})
             if ok:
                 st.success(f"{res['user_id']} -> {res['role']}")
                 st.rerun()
     st.subheader("创建管理员账户")
     with st.form("create_admin"):
-        username = st.text_input("用户名 (3-40字符)")
-        password = st.text_input("密码 (至少6位)", type="password")
+        username = st.text_input("用户名 (3-40字符)", key="ca_username")
+        password = st.text_input("密码 (至少6位)", type="password", key="ca_password")
         if st.form_submit_button("创建"):
             ok, res = api(
                 "POST", "/api/users/admin", {"username": username, "password": password}
@@ -726,15 +756,15 @@ def logs_admin_page():
             pid = st.selectbox("题目", [p["id"] for p in problems], key="vis_sel")
         with c2:
             public = st.checkbox("public_cases (公开日志)", key="vis_box")
-        if st.button("保存可见性"):
+        if st.button("保存可见性", key="vis_btn"):
             ok, res = api(
                 "PUT", f"/api/problems/{pid}/log_visibility", {"public_cases": public}
             )
             if ok:
                 st.success(f"{res['problem_id']} public_cases={res['public_cases']}")
     st.subheader("查看任意评测日志")
-    sid = st.text_input("submission_id")
-    if sid and st.button("查看日志"):
+    sid = st.text_input("submission_id", key="log_sid")
+    if sid and st.button("查看日志", key="log_btn"):
         ok, log = api("GET", f"/api/submissions/{sid}/log")
         if ok:
             st.dataframe(log["details"], hide_index=True)
@@ -742,10 +772,10 @@ def logs_admin_page():
     st.subheader("日志访问审计")
     c1, c2 = st.columns(2)
     with c1:
-        f_uid = st.text_input("按用户筛选 (可选)")
+        f_uid = st.text_input("按用户筛选 (可选)", key="audit_uid")
     with c2:
-        f_pid = st.text_input("按题目筛选 (可选)")
-    if st.button("查询审计记录"):
+        f_pid = st.text_input("按题目筛选 (可选)", key="audit_pid")
+    if st.button("查询审计记录", key="audit_btn"):
         params = {}
         if f_uid.strip():
             params["user_id"] = f_uid.strip()
@@ -772,16 +802,16 @@ def ai_page():
             f"api_key={'已配置' if cfg['api_key_configured'] else '未配置'}"
         )
     with st.form("ai_config"):
-        provider_url = st.text_input("provider_url", value="https://api.deepseek.com/v1")
-        model = st.text_input("model", value="deepseek-v4-pro")
-        api_key = st.text_input("api_key", type="password")
+        provider_url = st.text_input("provider_url", value="https://api.deepseek.com/v1", key="ai_provider")
+        model = st.text_input("model", value="deepseek-v4-pro", key="ai_model")
+        api_key = st.text_input("api_key", type="password", key="ai_key")
         c1, c2, c3 = st.columns(3)
         with c1:
-            in_price = st.text_input("输入价格 ($/百万token)", value="0.27")
+            in_price = st.text_input("输入价格 ($/百万token)", value="0.27", key="ai_in")
         with c2:
-            out_price = st.text_input("输出价格 ($/百万token)", value="1.1")
+            out_price = st.text_input("输出价格 ($/百万token)", value="1.1", key="ai_out")
         with c3:
-            price_unit = st.text_input("计价单位 (token数)", value="1000000")
+            price_unit = st.text_input("计价单位 (token数)", value="1000000", key="ai_unit")
         if st.form_submit_button("保存配置"):
             body = {
                 "provider_url": provider_url,
@@ -800,8 +830,9 @@ def ai_page():
         requirement = st.text_area(
             "命题需求 (知识点、难度、数据范围等)",
             placeholder="例如：考察二分查找，难度中等，输入一个有序数组和目标值...",
+            key="ai_req",
         )
-        problem_id = st.text_input("参考/修改已有题目 id (可选)")
+        problem_id = st.text_input("参考/修改已有题目 id (可选)", key="ai_pid")
         if st.form_submit_button("开始生成"):
             if not requirement.strip():
                 st.error("命题需求不能为空")

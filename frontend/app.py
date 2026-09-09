@@ -111,7 +111,16 @@ def current_user():
     return st.session_state.get("user")
 
 
+def _clear_widgets():
+    """Drop all page widget state so switching pages never leaks widgets."""
+    for k in list(st.session_state.keys()):
+        if k in ("user", "http", "ai_task_id") or k.startswith("last_submit_"):
+            continue
+        del st.session_state[k]
+
+
 def _nav(page, pid=None, sid=None):
+    _clear_widgets()
     st.session_state.page = page
     st.session_state.pid = pid
     st.session_state.sid = sid
@@ -268,10 +277,13 @@ def topbar():
         for i, it in enumerate(items):
             page = mapping[it]
             active = st.session_state.get("page") == page
-            if nav[i].button(
-                it, key=f"nav_{it}", type="primary" if active else "secondary"
-            ):
-                go(page)
+            nav[i].button(
+                it,
+                key=f"nav_{it}",
+                type="primary" if active else "secondary",
+                on_click=_nav,
+                args=(page, None, None),
+            )
     with c3:
         t1, t2 = st.columns([1.5, 1.4], gap="small")
         with t1:
@@ -283,9 +295,8 @@ def topbar():
             if user:
                 with st.popover(f"👤 {user['username']} ({user['role']})"):
                     st.write(f"用户ID: {user['user_id']}")
-                    if st.button("✏️ 编辑信息"):
-                        go("profile")
-                    if st.button("🚪 退出登录"):
+                    st.button("✏️ 编辑信息", key="pop_edit", on_click=_nav, args=("profile", None, None))
+                    if st.button("🚪 退出登录", key="pop_logout"):
                         api("POST", "/api/auth/logout", silent=True)
                         st.session_state.user = None
                         _clear_auth()
@@ -408,8 +419,12 @@ def problems_page():
         st.info("没有匹配的题目")
         return
     for p in problems:
-        if st.button(f"{p['id']} · {p['title']}", key=f"pt_{p['id']}"):
-            go("problem_detail", pid=p["id"])
+        st.button(
+            f"{p['id']} · {p['title']}",
+            key=f"pt_{p['id']}",
+            on_click=_nav,
+            args=("problem_detail", p["id"], None),
+        )
         okd, d = api("GET", f"/api/problems/{p['id']}", silent=True)
         meta = []
         if okd:
@@ -429,15 +444,18 @@ def problem_detail_page(pid):
         st.error("题目不存在或加载失败")
         return
     user = current_user()
-    if st.button("← 返回题库", key="back_problems"):
-        go("problems")
+    st.button("← 返回题库", key="back_problems", on_click=_nav, args=("problems", None, None))
     col_title, col_rec = st.columns([4, 1], vertical_alignment="center")
     with col_title:
         st.header(f"{p['id']} · {p['title']}")
     with col_rec:
         if user:
-            if st.button("📄 提交记录", key="detail_records_btn"):
-                go("problem_records", pid=pid)
+            st.button(
+                "📄 提交记录",
+                key="detail_records_btn",
+                on_click=_nav,
+                args=("problem_records", pid, None),
+            )
 
     meta = []
     if p.get("difficulty"):
@@ -575,8 +593,7 @@ def render_submission(sid):
 
 def problem_records_page(pid):
     st.subheader(f"我的提交记录 · {pid}")
-    if st.button("← 返回题目"):
-        go("problem_detail", pid=pid)
+    st.button("← 返回题目", key="recs_back", on_click=_nav, args=("problem_detail", pid, None))
     user = current_user()
     if user is None:
         st.info("请先登录")
@@ -639,8 +656,12 @@ def submission_page(sid):
     if not ok or not rec:
         st.error("提交不存在或无权限")
         return
-    if st.button("← 返回题目"):
-        go("problem_detail", pid=rec["problem_id"])
+    st.button(
+        "← 返回题目",
+        key="sub_back",
+        on_click=_nav,
+        args=("problem_detail", rec["problem_id"], None),
+    )
     st.subheader(f"提交 #{sid}")
     st.write(
         f"题目 {rec['problem_id']} | 用户 {rec['user_id']} | "

@@ -40,6 +40,12 @@ tests/          # pytest tests
 
 ## Quick Start
 
+**One-click (Windows)**: double-click `start.bat` — it opens the backend, the
+frontend, and your browser automatically. Close the two command windows to
+stop.
+
+Manual alternative:
+
 ```bash
 # Create a virtual environment
 python -m venv .venv

@@ -811,27 +811,26 @@ def logs_admin_page():
                 st.info("无审计记录")
 
 
-def _import_generated_problem(result):
-    """Import an AI-generated problem, auto-fixing id conflicts/invalid chars."""
-    result = dict(result)
-    original = str(result.get("id") or "").strip()
-    raw = re.sub(r"[^A-Za-z0-9_\-]", "_", original)[:64]
-    if not raw:
-        raw = "problem"
+def _next_problem_id():
+    """Next numeric problem id = max numeric id among existing problems + 1."""
     okp, existing = api("GET", "/api/problems/", silent=True)
-    existing_ids = {p["id"] for p in existing} if existing else set()
-    candidate = raw
-    n = 1
-    while candidate in existing_ids:
-        candidate = f"{raw}_{n}"
-        n += 1
-    result["id"] = candidate
+    ids = [p["id"] for p in existing] if existing else []
+    max_num = 0
+    for pid in ids:
+        m = re.search(r"(\d+)$", str(pid))
+        if m:
+            max_num = max(max_num, int(m.group(1)))
+    return str(max_num + 1)
+
+
+def _import_generated_problem(result):
+    """Import an AI-generated problem, ignoring the model's id and assigning
+    the next available numeric id."""
+    result = dict(result)
+    result["id"] = _next_problem_id()
     ok2, data = api("POST", "/api/problems/", result)
     if ok2:
-        if candidate != original:
-            st.success(f"题目已导入（id 已自动调整为「{candidate}」）")
-        else:
-            st.success(f"题目已导入: {candidate}")
+        st.success(f"题目已导入，id = {result['id']}")
 
 
 def ai_page():

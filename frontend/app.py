@@ -59,6 +59,16 @@ def _clear_auth():
         pass
 
 
+def _cookie_value(name):
+    """Read a cookie value without triggering CookieConflictError when the
+    jar holds duplicates."""
+    s = get_session()
+    for c in s.cookies:
+        if c.name == name:
+            return c.value
+    return None
+
+
 def restore_login():
     if "user" in st.session_state:
         return
@@ -67,7 +77,11 @@ def restore_login():
         return
     cookie = saved.get("cookie")
     if cookie:
-        get_session().cookies.set("session", cookie, path="/")
+        # Rebuild a clean session so restored cookies never duplicate
+        # cookies set by a previous login.
+        fresh = requests.Session()
+        fresh.cookies.set("session", cookie, path="/")
+        st.session_state.http = fresh
     st.session_state.user = saved.get("user")
     uid = (saved.get("user") or {}).get("user_id")
     if uid:
@@ -208,7 +222,7 @@ def login_dialog():
         )
         if ok:
             st.session_state.user = data
-            _save_auth(get_session().cookies.get("session"), data)
+            _save_auth(_cookie_value("session"), data)
             st.rerun()
     with st.expander("忘记密码？"):
         fp_username = st.text_input("用户名", key="fp_username")
@@ -704,7 +718,7 @@ def profile_page():
                         **user,
                         "username": res.get("username", user["username"]),
                     }
-                    _save_auth(get_session().cookies.get("session"), st.session_state.user)
+                    _save_auth(_cookie_value("session"), st.session_state.user)
                     st.success("已保存")
                     st.rerun()
 

@@ -38,3 +38,21 @@ async def login(request: Request):
 async def logout(request: Request, _: CurrentUser = Depends(auth.get_current_user)):
     request.session.clear()
     return {"code": 200, "msg": "logout success", "data": None}
+
+
+@router.post("/reset-password")
+async def reset_password(request: Request):
+    """Forgot-password flow: no identity verification (course demo), just
+    username + new password."""
+    data = await parse_body(request)
+    username = data.get("username")
+    new_password = data.get("new_password")
+    if not username or not new_password:
+        raise HTTPException(status_code=400, detail="username and new_password are required")
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="password must be at least 6 characters")
+    user = await user_ops.get_by_username(username)
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    await user_ops.set_password(user["user_id"], new_password)
+    return {"code": 200, "msg": "password reset", "data": None}

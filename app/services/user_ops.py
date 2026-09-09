@@ -40,6 +40,15 @@ def check_password(password: str, hashed: str) -> bool:
         return False
 
 
+async def set_password(user_id: str, new_password: str) -> None:
+    """Reset a user's password (forgot-password flow)."""
+    user = await get(user_id)
+    if user is None:
+        return
+    user["password_hash"] = hash_password(new_password)
+    await save(user)
+
+
 async def _next_id() -> str:
     ids = [int(p.stem) for p in USERS_DIR.glob("*.json") if p.stem.isdigit()]
     return str(max(ids, default=0) + 1)

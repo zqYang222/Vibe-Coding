@@ -1,12 +1,13 @@
 """Streamlit frontend for the Online Judge system (Step 6 + Advance).
 
-Single-file app with manual routing via st.session_state + query params.
-All data flows through the FastAPI backend REST APIs; this frontend never
-reads/writes backend data directly. Identity comes from the session cookie.
+In-page navigation only (buttons + st.rerun, never full-page links), so the
+login session survives every navigation. The backend session cookie is also
+persisted to a local file so a browser refresh keeps you logged in.
 """
 
 import json
 import time
+from pathlib import Path
 
 import requests
 import streamlit as st
@@ -14,6 +15,9 @@ import streamlit as st
 st.set_page_config(page_title="Online Judge", layout="wide")
 
 API_BASE = "http://127.0.0.1:8000"
+
+# Login cookie persistence (survives page refresh / server restart).
+_AUTH_FILE = Path(__file__).resolve().parent / ".streamlit" / "auth.json"
 
 VERDICT_LABEL = {
     "AC": "Accepted",
@@ -24,6 +28,52 @@ VERDICT_LABEL = {
     "CE": "Compilation Error",
     "UNK": "Unknown",
 }
+
+
+# ---------------- auth persistence ----------------
+
+def _save_auth(cookie, user):
+    try:
+        _AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _AUTH_FILE.write_text(
+            json.dumps({"cookie": cookie, "user": user}), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+
+def _load_auth():
+    try:
+        if _AUTH_FILE.exists():
+            return json.loads(_AUTH_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return None
+
+
+def _clear_auth():
+    try:
+        _AUTH_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def restore_login():
+    if "user" in st.session_state:
+        return
+    saved = _load_auth()
+    if not saved:
+        return
+    cookie = saved.get("cookie")
+    if cookie:
+        get_session().cookies.set("session", cookie, path="/")
+    st.session_state.user = saved.get("user")
+    uid = (saved.get("user") or {}).get("user_id")
+    if uid:
+        ok, _ = api("GET", f"/api/users/{uid}", silent=True)
+        if not ok:
+            st.session_state.user = None
+            _clear_auth()
 
 
 # ---------------- session & api helpers ----------------
@@ -61,25 +111,15 @@ def current_user():
     return st.session_state.get("user")
 
 
-def go(page, pid=None, sid=None):
+def _nav(page, pid=None, sid=None):
     st.session_state.page = page
     st.session_state.pid = pid
     st.session_state.sid = sid
-    st.query_params.clear()
+
+
+def go(page, pid=None, sid=None):
+    _nav(page, pid, sid)
     st.rerun()
-
-
-def nav_link(label, page, pid=None, sid=None):
-    params = [f"page={page}"]
-    if pid:
-        params.append(f"pid={pid}")
-    if sid:
-        params.append(f"sid={sid}")
-    st.markdown(
-        f'<a href="?{"&".join(params)}" '
-        f'style="color:#1f6feb;text-decoration:none;font-weight:500">{label}</a>',
-        unsafe_allow_html=True,
-    )
 
 
 def parse_json_list(text, label):
@@ -104,10 +144,10 @@ def _color(score, counts):
         return "#e2e3e5", "#383d41"
     ratio = score / counts
     if ratio >= 1:
-        return "#d4edda", "#155724"  # green
+        return "#d4edda", "#155724"
     if ratio > 0:
-        return "#fff3cd", "#856404"  # yellow
-    return "#f8d7da", "#721c24"  # red
+        return "#fff3cd", "#856404"
+    return "#f8d7da", "#721c24"
 
 
 def _verdict_bg(result):
@@ -184,7 +224,7 @@ def sidebar():
                     )
                     if ok:
                         st.session_state.user = data
-                        st.query_params.clear()
+                        _save_auth(get_session().cookies.get("session"), data)
                         st.rerun()
             if st.sidebar.button("忘记密码？"):
                 forgot_password_dialog()
@@ -217,6 +257,7 @@ def sidebar():
         if st.sidebar.button("退出登录", use_container_width=True):
             api("POST", "/api/auth/logout", silent=True)
             st.session_state.user = None
+            _clear_auth()
             go("problems")
 
 
@@ -225,9 +266,7 @@ def sidebar():
 def problem_form(defaults=None):
     d = defaults or {}
     with st.form(f"problem_form_{'edit' if defaults else 'add'}"):
-        pid = st.text_input(
-            "id", value=d.get("id", ""), disabled=bool(d.get("id"))
-        )
+        pid = st.text_input("id", value=d.get("id", ""), disabled=bool(d.get("id")))
         title = st.text_input("title", value=d.get("title", ""))
         description = st.text_area("description", value=d.get("description", ""))
         in_desc = st.text_area("input_description", value=d.get("input_description", ""))
@@ -301,24 +340,17 @@ def problems_page():
         st.info("暂无题目，点击上方「新增题目」添加")
         return
     st.caption(f"共 {len(problems)} 道题目")
-    html = [
-        '<table style="width:100%;border-collapse:collapse">',
-        '<tr style="border-bottom:2px solid #e1e4e8;text-align:left">'
-        '<th style="padding:8px;color:#57606a">#</th>'
-        '<th style="padding:8px;color:#57606a">标题</th></tr>',
-    ]
-    for i, p in enumerate(problems, 1):
-        link = (
-            f'<a href="?page=problem_detail&pid={p["id"]}" '
-            f'style="color:#1f6feb;text-decoration:none;font-size:1.05rem">{p["title"]}</a>'
-        )
-        html.append(
-            f'<tr style="border-bottom:1px solid #f0f2f5">'
-            f'<td style="padding:8px;color:#8b949e">{i}</td>'
-            f'<td style="padding:8px">{link}</td></tr>'
-        )
-    html.append("</table>")
-    st.markdown("".join(html), unsafe_allow_html=True)
+    for p in problems:
+        c1, c2 = st.columns([5, 2])
+        with c1:
+            if st.button(
+                f"{p['id']} · {p['title']}",
+                key=f"pt_{p['id']}",
+                use_container_width=True,
+            ):
+                go("problem_detail", pid=p["id"])
+        with c2:
+            st.write("")
 
 
 def problem_detail_page(pid):
@@ -331,9 +363,9 @@ def problem_detail_page(pid):
     with col_title:
         st.header(f"{p['id']} · {p['title']}")
     with col_rec:
-        st.write("")
         if user:
-            nav_link("📄 提交记录 →", "problem_records", pid=pid)
+            if st.button("📄 提交记录", key=f"recs_{pid}"):
+                go("problem_records", pid=pid)
 
     meta = []
     if p.get("difficulty"):
@@ -471,7 +503,8 @@ def render_submission(sid):
 
 def problem_records_page(pid):
     st.subheader(f"我的提交记录 · {pid}")
-    nav_link("← 返回题目", "problem_detail", pid=pid)
+    if st.button("← 返回题目"):
+        go("problem_detail", pid=pid)
     user = current_user()
     if user is None:
         st.info("请先登录")
@@ -502,7 +535,21 @@ def problem_records_page(pid):
                 "time": it.get("created_time", ""),
             }
         )
-    st.markdown(_records_table(rows), unsafe_allow_html=True)
+    header = st.columns([1.1, 1, 1.4, 1, 1.8, 1, 1.6])
+    for h, col in zip(
+        ["提交编号", "用户", "题目", "语言", "状态", "分数", "时间"], header
+    ):
+        col.markdown(f"**{h}**")
+    for r in rows:
+        c = st.columns([1.1, 1, 1.4, 1, 1.8, 1, 1.6])
+        c[0].button(f"#{r['sid']}", key=f"sid_{r['sid']}", on_click=_nav, args=("submission", None, r["sid"]))
+        c[1].write(r["uid"])
+        c[2].button(r["pid"], key=f"pid_{r['sid']}", on_click=_nav, args=("problem_detail", r["pid"], None))
+        c[3].write(r["lang"])
+        bg, fg = _color(r["score"], r["counts"])
+        c[4].markdown(badge(r["verdict"], bg, fg), unsafe_allow_html=True)
+        c[5].write(f'{r["score"]}/{r["counts"]}' if r["counts"] is not None else "-")
+        c[6].write(r["time"])
 
 
 def _submission_verdict(sid, status, score, counts):
@@ -515,36 +562,9 @@ def _submission_verdict(sid, status, score, counts):
     return overall_from_details(details), score, counts
 
 
-def _records_table(rows):
-    headers = ["提交编号", "用户", "题目", "语言", "状态", "分数", "时间"]
-    html = [
-        '<table style="width:100%;border-collapse:collapse;font-size:0.95rem">',
-        "<tr style='background:#f6f8fa;text-align:left'>"
-        + "".join(f"<th style='padding:8px'>{h}</th>" for h in headers)
-        + "</tr>",
-    ]
-    for r in rows:
-        sid_link = f'<a href="?page=submission&sid={r["sid"]}" style="color:#1f6feb">{r["sid"]}</a>'
-        pid_link = f'<a href="?page=problem_detail&pid={r["pid"]}" style="color:#1f6feb">{r["pid"]}</a>'
-        bg, fg = _color(r["score"], r["counts"])
-        v = badge(r["verdict"], bg, fg)
-        score_str = f'{r["score"]}/{r["counts"]}' if r["counts"] is not None else "-"
-        html.append(
-            "<tr style='border-bottom:1px solid #f0f2f5;text-align:left'>"
-            f"<td style='padding:8px'>{sid_link}</td>"
-            f"<td style='padding:8px'>{r['uid']}</td>"
-            f"<td style='padding:8px'>{pid_link}</td>"
-            f"<td style='padding:8px'>{r['lang']}</td>"
-            f"<td style='padding:8px'>{v}</td>"
-            f"<td style='padding:8px'>{score_str}</td>"
-            f"<td style='padding:8px'>{r['time']}</td></tr>"
-        )
-    html.append("</table>")
-    return "".join(html)
-
-
 def submission_page(sid):
-    nav_link("← 返回题库", "problems")
+    if st.button("← 返回题库"):
+        go("problems")
     ok, rec = api("GET", f"/api/submissions/{sid}", silent=True)
     if not ok or not rec:
         st.error("提交不存在或无权限")
@@ -749,25 +769,20 @@ def ai_page():
 
 # ---------------- router ----------------
 
-qp = st.query_params
-if "page" in qp:
-    st.session_state.page = qp["page"]
-    if qp.get("pid"):
-        st.session_state.pid = qp["pid"]
-    if qp.get("sid"):
-        st.session_state.sid = qp["sid"]
-else:
-    st.session_state.setdefault("page", "problems")
-
+restore_login()
 sidebar()
 
+st.session_state.setdefault("page", "problems")
 page = st.session_state.page
+pid = st.session_state.get("pid")
+sid = st.session_state.get("sid")
+
 if page == "problem_detail":
-    problem_detail_page(st.session_state.get("pid"))
+    problem_detail_page(pid)
 elif page == "problem_records":
-    problem_records_page(st.session_state.get("pid"))
+    problem_records_page(pid)
 elif page == "submission":
-    submission_page(st.session_state.get("sid"))
+    submission_page(sid)
 elif page == "ai":
     ai_page()
 elif page == "languages":

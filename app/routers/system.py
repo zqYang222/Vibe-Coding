@@ -24,6 +24,7 @@ async def reset(request: Request, _: CurrentUser = Depends(auth.get_current_admi
             p.unlink(missing_ok=True)
     submission_ops.reset_rate_limits()
     await log_ops.reset_visibility()
+    language_ops.LANG_FILE.unlink(missing_ok=True)  # drop stray registrations
     await user_ops.ensure_initial_admin()
     await language_ops.ensure_builtins()
     request.session.clear()

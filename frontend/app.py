@@ -235,11 +235,21 @@ def register_dialog():
 # ---------------- top bar ----------------
 
 def topbar():
+    st.markdown(
+        """
+        <style>
+        .block-container { padding-top: 0.8rem; padding-bottom: 2rem; }
+        .stButton button { font-size: 1.08rem; }
+        hr { margin: 0.3rem 0 !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     user = current_user()
     c1, c2, c3 = st.columns([1.4, 4.4, 2.6], gap="small")
     with c1:
         st.markdown(
-            '<span style="font-size:1.3rem;font-weight:700;color:#0f1115">'
+            '<span style="font-size:1.6rem;font-weight:700;color:#0f1115">'
             "Online Judge</span>",
             unsafe_allow_html=True,
         )
@@ -265,7 +275,10 @@ def topbar():
     with c3:
         t1, t2 = st.columns([1.5, 1.4], gap="small")
         with t1:
-            st.caption(f"🕐 {beijing_now()}")
+            st.markdown(
+                f'<span style="font-size:1.08rem;color:#57606a">🕐 {beijing_now()}</span>',
+                unsafe_allow_html=True,
+            )
         with t2:
             if user:
                 with st.popover(f"👤 {user['username']} ({user['role']})"):
@@ -291,33 +304,33 @@ def topbar():
 def problem_form(defaults=None):
     d = defaults or {}
     with st.form(f"problem_form_{'edit' if defaults else 'add'}"):
-        pid = st.text_input("id", value=d.get("id", ""), disabled=bool(d.get("id")))
-        title = st.text_input("title", value=d.get("title", ""))
-        description = st.text_area("description", value=d.get("description", ""))
-        in_desc = st.text_area("input_description", value=d.get("input_description", ""))
-        out_desc = st.text_area("output_description", value=d.get("output_description", ""))
+        pid = st.text_input("id *", value=d.get("id", ""), disabled=bool(d.get("id")))
+        title = st.text_input("title *", value=d.get("title", ""))
+        description = st.text_area("description *", value=d.get("description", ""))
+        in_desc = st.text_area("input_description *", value=d.get("input_description", ""))
+        out_desc = st.text_area("output_description *", value=d.get("output_description", ""))
         samples = st.text_area(
-            "samples (JSON数组)",
+            "samples (JSON数组) *",
             value=json.dumps(d.get("samples", []), ensure_ascii=False),
         )
-        constraints = st.text_area("constraints", value=d.get("constraints", ""))
+        constraints = st.text_area("constraints *", value=d.get("constraints", ""))
         testcases = st.text_area(
-            "testcases (JSON数组)",
+            "testcases (JSON数组) *",
             value=json.dumps(d.get("testcases", []), ensure_ascii=False),
         )
-        hint = st.text_input("hint", value=d.get("hint", ""))
-        source = st.text_input("source", value=d.get("source", ""))
-        tags = st.text_input("tags (逗号分隔)", value=",".join(d.get("tags", [])))
+        hint = st.text_input("hint (可选)", value=d.get("hint", ""))
+        source = st.text_input("source (可选)", value=d.get("source", ""))
+        tags = st.text_input("tags (逗号分隔，可选)", value=",".join(d.get("tags", [])))
         t_limit = st.text_input(
-            "time_limit 秒",
+            "time_limit 秒 (可选)",
             value="" if d.get("time_limit") is None else str(d["time_limit"]),
         )
         m_limit = st.text_input(
-            "memory_limit MB",
+            "memory_limit MB (可选)",
             value="" if d.get("memory_limit") is None else str(d["memory_limit"]),
         )
-        author = st.text_input("author", value=d.get("author", ""))
-        difficulty = st.text_input("difficulty", value=d.get("difficulty", ""))
+        author = st.text_input("author (可选)", value=d.get("author", ""))
+        difficulty = st.text_input("difficulty (可选)", value=d.get("difficulty", ""))
         submitted = st.form_submit_button("保存")
     if not submitted:
         return None

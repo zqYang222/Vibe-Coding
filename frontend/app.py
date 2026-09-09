@@ -812,7 +812,7 @@ def logs_admin_page():
 
 
 def _next_problem_id():
-    """Next numeric problem id = max numeric id among existing problems + 1."""
+    """Next problem id = 'P' + (max numeric id among existing problems + 1)."""
     okp, existing = api("GET", "/api/problems/", silent=True)
     ids = [p["id"] for p in existing] if existing else []
     max_num = 0
@@ -820,7 +820,7 @@ def _next_problem_id():
         m = re.search(r"(\d+)$", str(pid))
         if m:
             max_num = max(max_num, int(m.group(1)))
-    return str(max_num + 1)
+    return f"P{max_num + 1}"
 
 
 def _import_generated_problem(result):

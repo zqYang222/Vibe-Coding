@@ -563,12 +563,12 @@ def _submission_verdict(sid, status, score, counts):
 
 
 def submission_page(sid):
-    if st.button("← 返回题库"):
-        go("problems")
     ok, rec = api("GET", f"/api/submissions/{sid}", silent=True)
     if not ok or not rec:
         st.error("提交不存在或无权限")
         return
+    if st.button("← 返回题目"):
+        go("problem_detail", pid=rec["problem_id"])
     st.subheader(f"提交 #{sid}")
     st.write(
         f"题目 {rec['problem_id']} | 用户 {rec['user_id']} | "

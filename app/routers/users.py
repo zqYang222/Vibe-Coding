@@ -125,6 +125,43 @@ async def get_user(
     return {"code": 200, "msg": "success", "data": _public_user(user)}
 
 
+@router.put("/{user_id}")
+async def update_profile(
+    user_id: str,
+    request: Request,
+    current_user: CurrentUser = Depends(auth.get_current_user),
+):
+    """Edit own profile (self or admin): change username and/or password."""
+    if not current_user.is_admin and user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="permission denied")
+    target = await user_ops.get(user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    data = await parse_body(request)
+
+    username = data.get("username")
+    new_password = data.get("new_password")
+    old_password = data.get("old_password")
+
+    if username is not None:
+        if not (_USERNAME_MIN <= len(username) <= _USERNAME_MAX):
+            raise HTTPException(status_code=400, detail=f"username length must be {_USERNAME_MIN}-{_USERNAME_MAX}")
+        existing = await user_ops.get_by_username(username)
+        if existing and existing["user_id"] != user_id:
+            raise HTTPException(status_code=400, detail="username already exists")
+        await user_ops.update_username(user_id, username)
+
+    if new_password is not None:
+        if len(new_password) < _PASSWORD_MIN:
+            raise HTTPException(status_code=400, detail=f"password must be at least {_PASSWORD_MIN} characters")
+        if not user_ops.check_password(old_password or "", target["password_hash"]):
+            raise HTTPException(status_code=400, detail="old password incorrect")
+        await user_ops.set_password(user_id, new_password)
+
+    updated = await user_ops.get(user_id)
+    return {"code": 200, "msg": "profile updated", "data": _public_user(updated)}
+
+
 @router.put("/{user_id}/role")
 async def change_role(
     user_id: str,

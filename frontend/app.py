@@ -7,6 +7,7 @@ persisted to a local file so a browser refresh keeps you logged in.
 
 import json
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -16,7 +17,6 @@ st.set_page_config(page_title="Online Judge", layout="wide")
 
 API_BASE = "http://127.0.0.1:8000"
 
-# Login cookie persistence (survives page refresh / server restart).
 _AUTH_FILE = Path(__file__).resolve().parent / ".streamlit" / "auth.json"
 
 VERDICT_LABEL = {
@@ -122,6 +122,10 @@ def go(page, pid=None, sid=None):
     st.rerun()
 
 
+def beijing_now():
+    return datetime.now(timezone(timedelta(hours=8))).strftime("%m-%d %H:%M:%S")
+
+
 def parse_json_list(text, label):
     text = (text or "").strip()
     if not text:
@@ -182,86 +186,106 @@ def overall_from_details(details):
     return "Wrong Answer"
 
 
-# ---------------- forgot password ----------------
+# ---------------- dialogs ----------------
 
-@st.dialog("忘记密码")
-def forgot_password_dialog():
-    st.write("输入用户名并设置新密码（演示环境，无需其它验证）")
+@st.dialog("登录")
+def login_dialog():
     username = st.text_input("用户名")
-    p1 = st.text_input("新密码", type="password")
-    p2 = st.text_input("确认新密码", type="password")
-    if st.button("确认重置"):
-        if not username:
-            st.error("请输入用户名")
-        elif len(p1) < 6:
-            st.error("新密码至少 6 位")
-        elif p1 != p2:
-            st.error("两次输入的新密码不一致")
-        else:
-            ok, _ = api(
-                "POST", "/api/auth/reset-password",
-                {"username": username, "new_password": p1},
-            )
-            if ok:
-                st.success("密码已重置，请返回登录")
+    password = st.text_input("密码", type="password")
+    if st.button("登录"):
+        ok, data = api(
+            "POST", "/api/auth/login", {"username": username, "password": password}
+        )
+        if ok:
+            st.session_state.user = data
+            _save_auth(get_session().cookies.get("session"), data)
+            st.rerun()
+    with st.expander("忘记密码？"):
+        fp_username = st.text_input("用户名", key="fp_username")
+        fp1 = st.text_input("新密码", type="password", key="fp1")
+        fp2 = st.text_input("确认新密码", type="password", key="fp2")
+        if st.button("重置密码"):
+            if not fp_username:
+                st.error("请输入用户名")
+            elif len(fp1) < 6:
+                st.error("新密码至少 6 位")
+            elif fp1 != fp2:
+                st.error("两次输入的新密码不一致")
+            else:
+                ok2, _ = api(
+                    "POST", "/api/auth/reset-password",
+                    {"username": fp_username, "new_password": fp1},
+                )
+                if ok2:
+                    st.success("密码已重置，请用新密码登录")
 
 
-# ---------------- sidebar ----------------
+@st.dialog("注册")
+def register_dialog():
+    username = st.text_input("用户名 (3-40字符)")
+    password = st.text_input("密码 (至少6位)", type="password")
+    if st.button("注册"):
+        ok, data = api(
+            "POST", "/api/users/", {"username": username, "password": password}
+        )
+        if ok:
+            st.success(f"注册成功: {data['username']}，请登录")
 
-def sidebar():
-    st.sidebar.title("Online Judge")
+
+# ---------------- top bar ----------------
+
+def topbar():
     user = current_user()
-    if user is None:
-        mode = st.sidebar.radio("", ["登录", "注册"], horizontal=True)
-        if mode == "登录":
-            with st.sidebar.form("login_form"):
-                username = st.text_input("用户名")
-                password = st.text_input("密码", type="password")
-                if st.form_submit_button("登录"):
-                    ok, data = api(
-                        "POST", "/api/auth/login",
-                        {"username": username, "password": password},
-                    )
-                    if ok:
-                        st.session_state.user = data
-                        _save_auth(get_session().cookies.get("session"), data)
-                        st.rerun()
-            if st.sidebar.button("忘记密码？"):
-                forgot_password_dialog()
-        else:
-            with st.sidebar.form("register_form"):
-                username = st.text_input("用户名 (3-40字符)")
-                password = st.text_input("密码 (至少6位)", type="password")
-                if st.form_submit_button("注册"):
-                    ok, data = api(
-                        "POST", "/api/users/",
-                        {"username": username, "password": password},
-                    )
-                    if ok:
-                        st.sidebar.success(f"注册成功: {data['username']}，请登录")
-    else:
-        st.sidebar.success(f"👤 {user['username']}（{user['role']}）")
-        st.sidebar.markdown("---")
-        if st.sidebar.button("📚 题库", use_container_width=True):
-            go("problems")
-        if st.sidebar.button("🤖 AI 命题", use_container_width=True):
-            go("ai")
-        if st.sidebar.button("🌐 语言", use_container_width=True):
-            go("languages")
-        if user["role"] == "admin":
-            if st.sidebar.button("👥 用户管理", use_container_width=True):
-                go("users")
-            if st.sidebar.button("📋 日志审计", use_container_width=True):
-                go("logs")
-        st.sidebar.markdown("---")
-        if st.sidebar.button("退出登录", use_container_width=True):
-            api("POST", "/api/auth/logout", silent=True)
-            st.session_state.user = None
-            _clear_auth()
-            go("problems")
+    c1, c2, c3 = st.columns([1.4, 4.4, 2.6])
+    with c1:
+        st.markdown(
+            '<span style="font-size:1.35rem;font-weight:700;color:#0f1115">'
+            "Online Judge</span>",
+            unsafe_allow_html=True,
+        )
+    with c2:
+        items = ["题库", "AI命题", "语言"]
+        if user and user["role"] == "admin":
+            items += ["用户管理", "日志审计"]
+        mapping = {
+            "题库": "problems",
+            "AI命题": "ai",
+            "语言": "languages",
+            "用户管理": "users",
+            "日志审计": "logs",
+        }
+        nav = st.columns(len(items))
+        for i, it in enumerate(items):
+            page = mapping[it]
+            active = st.session_state.get("page") == page
+            nav[i].button(
+                it, key=f"nav_{it}", type="primary" if active else "secondary"
+            ) and go(page)
+    with c3:
+        t1, t2 = st.columns([1.3, 1.5])
+        with t1:
+            st.caption(f"🕐 {beijing_now()}")
+        with t2:
+            if user:
+                with st.popover(f"👤 {user['username']} ({user['role']})"):
+                    st.write(f"用户ID: {user['user_id']}")
+                    if st.button("✏️ 编辑信息"):
+                        go("profile")
+                    if st.button("🚪 退出登录"):
+                        api("POST", "/api/auth/logout", silent=True)
+                        st.session_state.user = None
+                        _clear_auth()
+                        go("problems")
+            else:
+                l1, l2 = st.columns(2)
+                if l1.button("登录"):
+                    login_dialog()
+                if l2.button("注册"):
+                    register_dialog()
+    st.markdown("---")
 
 
-# ---------------- problem form (add/edit) ----------------
+# ---------------- problem form ----------------
 
 def problem_form(defaults=None):
     d = defaults or {}
@@ -339,18 +363,20 @@ def problems_page():
     if not ok or not problems:
         st.info("暂无题目，点击上方「新增题目」添加")
         return
+    q = st.text_input("🔍 搜索题目（按题号或标题关键字）")
+    if q.strip():
+        ql = q.strip().lower()
+        problems = [
+            p for p in problems
+            if ql in p["id"].lower() or ql in p["title"].lower()
+        ]
     st.caption(f"共 {len(problems)} 道题目")
+    if not problems:
+        st.info("没有匹配的题目")
+        return
     for p in problems:
-        c1, c2 = st.columns([5, 2])
-        with c1:
-            if st.button(
-                f"{p['id']} · {p['title']}",
-                key=f"pt_{p['id']}",
-                use_container_width=True,
-            ):
-                go("problem_detail", pid=p["id"])
-        with c2:
-            st.write("")
+        if st.button(f"{p['id']} · {p['title']}", key=f"pt_{p['id']}"):
+            go("problem_detail", pid=p["id"])
 
 
 def problem_detail_page(pid):
@@ -359,12 +385,14 @@ def problem_detail_page(pid):
         st.error("题目不存在或加载失败")
         return
     user = current_user()
+    if st.button("← 返回题库"):
+        go("problems")
     col_title, col_rec = st.columns([4, 1])
     with col_title:
         st.header(f"{p['id']} · {p['title']}")
     with col_rec:
         if user:
-            if st.button("📄 提交记录", key=f"recs_{pid}"):
+            if st.button("📄 提交记录"):
                 go("problem_records", pid=pid)
 
     meta = []
@@ -427,7 +455,7 @@ def problem_detail_page(pid):
         key=f"lang_{pid}",
     )
     code = st.text_area("代码", height=200, key=f"code_{pid}", placeholder="print('hello')")
-    if st.button("提交评测", type="primary", key=f"submit_{pid}"):
+    if st.button("提交评测", type="primary"):
         if not code.strip():
             st.error("代码不能为空")
         else:
@@ -481,7 +509,7 @@ def render_submission(sid):
         return
     if rec["status"] == "pending":
         st.info("评测中…")
-        if st.button("刷新", key=f"refresh_{sid}"):
+        if st.button("刷新"):
             st.rerun()
         return
     if rec["status"] == "error":
@@ -575,6 +603,44 @@ def submission_page(sid):
         f"语言 {rec['language']} | 提交时间 {rec.get('created_time', '')}"
     )
     render_submission(sid)
+
+
+def profile_page():
+    st.title("编辑个人信息")
+    user = current_user()
+    if user is None:
+        st.info("请先登录")
+        return
+    ok, me = api("GET", f"/api/users/{user['user_id']}", silent=True)
+    if not ok:
+        return
+    st.write(
+        f"用户ID: {me['user_id']} | 当前用户名: {me['username']} | "
+        f"角色: {me['role']} | 加入时间: {me['join_time']}"
+    )
+    with st.form("profile_form"):
+        new_username = st.text_input("新用户名（留空则不修改）")
+        old_pw = st.text_input("旧密码（改密码时填写）", type="password")
+        new_pw = st.text_input("新密码（至少6位，留空则不修改）", type="password")
+        if st.form_submit_button("保存"):
+            body = {}
+            if new_username.strip():
+                body["username"] = new_username.strip()
+            if old_pw or new_pw:
+                body["old_password"] = old_pw
+                body["new_password"] = new_pw
+            if not body:
+                st.info("没有需要修改的内容")
+            else:
+                ok2, res = api("PUT", f"/api/users/{user['user_id']}", body)
+                if ok2:
+                    st.session_state.user = {
+                        **user,
+                        "username": res.get("username", user["username"]),
+                    }
+                    _save_auth(get_session().cookies.get("session"), st.session_state.user)
+                    st.success("已保存")
+                    st.rerun()
 
 
 def languages_page():
@@ -770,7 +836,7 @@ def ai_page():
 # ---------------- router ----------------
 
 restore_login()
-sidebar()
+topbar()
 
 st.session_state.setdefault("page", "problems")
 page = st.session_state.page
@@ -783,6 +849,8 @@ elif page == "problem_records":
     problem_records_page(pid)
 elif page == "submission":
     submission_page(sid)
+elif page == "profile":
+    profile_page()
 elif page == "ai":
     ai_page()
 elif page == "languages":

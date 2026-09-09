@@ -49,6 +49,15 @@ async def set_password(user_id: str, new_password: str) -> None:
     await save(user)
 
 
+async def update_username(user_id: str, new_username: str) -> None:
+    """Change a user's username (profile edit)."""
+    user = await get(user_id)
+    if user is None:
+        return
+    user["username"] = new_username
+    await save(user)
+
+
 async def _next_id() -> str:
     ids = [int(p.stem) for p in USERS_DIR.glob("*.json") if p.stem.isdigit()]
     return str(max(ids, default=0) + 1)

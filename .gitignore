@@ -26,6 +26,9 @@ data/ai/
 # Local Q&A notes (course group chat transcript, not part of the deliverable)
 Q&A.txt
 
+# Local packaging artifacts
+*.zip
+
 # Streamlit local secrets & persisted login cookie
 .streamlit/secrets.toml
 frontend/.streamlit/

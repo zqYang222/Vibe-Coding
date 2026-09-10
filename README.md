@@ -56,7 +56,7 @@ pip install -r requirements.txt
 # Run the backend (terminal 1)
 uvicorn app.main:app --reload --port 8000
 # Run the frontend (terminal 2)
-streamlit run frontend/app.py
+streamlit run frontend/app.py --server.headless true --browser.gatherUsageStats false
 # Run the API test suite (optional)
 pytest tests/ -v
 # Seed demo problems for the acceptance demo (optional)

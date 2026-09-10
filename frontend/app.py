@@ -695,11 +695,11 @@ def submissions_list_page(pid=None):
         st.info("该页暂无记录")
 
     # —— 分页 ——
-    pc1, pc2, pc3 = st.columns([1, 2, 1], gap="small")
+    pc1, pc2, pc3 = st.columns([1, 2, 1], gap="small", vertical_alignment="center")
     if pc1.button("← 上一页", key="sl_prev", disabled=(page <= 1)):
         st.session_state.sl_page = page - 1
         st.rerun()
-    pc2.markdown(f"第 **{page}** 页")
+    pc2.markdown(f"<div style='text-align:center'>第 <b>{page}</b> 页</div>", unsafe_allow_html=True)
     if pc3.button("下一页 →", key="sl_next", disabled=(page * page_size >= total)):
         st.session_state.sl_page = page + 1
         st.rerun()

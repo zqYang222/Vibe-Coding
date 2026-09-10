@@ -278,11 +278,12 @@ def topbar():
             unsafe_allow_html=True,
         )
     with c2:
-        items = ["题库", "AI命题", "语言"]
+        items = ["题库", "提交记录", "AI命题", "语言"]
         if user and user["role"] == "admin":
             items += ["用户管理", "日志审计"]
         mapping = {
             "题库": "problems",
+            "提交记录": "submissions",
             "AI命题": "ai",
             "语言": "languages",
             "用户管理": "users",
@@ -469,7 +470,7 @@ def problem_detail_page(pid):
                 "📄 提交记录",
                 key="detail_records_btn",
                 on_click=_nav,
-                args=("problem_records", pid, None),
+                args=("submissions", pid, None),
             )
 
     meta = []
@@ -606,54 +607,102 @@ def render_submission(sid):
         st.markdown(build_details_table(details), unsafe_allow_html=True)
 
 
-def problem_records_page(pid):
-    st.subheader(f"我的提交记录 · {pid}")
-    st.button("← 返回题目", key="recs_back", on_click=_nav, args=("problem_detail", pid, None))
-    user = current_user()
-    if user is None:
-        st.info("请先登录")
-        return
-    ok, data = api(
-        "GET", "/api/submissions/",
-        params={"user_id": user["user_id"], "problem_id": pid},
-        silent=True,
-    )
-    if not ok or not data or not data.get("submissions"):
-        st.info("暂无该题目的提交记录")
-        return
-    rows = []
-    for it in data["submissions"]:
-        sid = it["submission_id"]
-        verdict, score, counts = _submission_verdict(
-            sid, it["status"], it.get("score"), it.get("counts")
-        )
-        rows.append(
-            {
-                "sid": sid,
-                "uid": it["user_id"],
-                "pid": it["problem_id"],
-                "lang": it["language"],
-                "verdict": verdict,
-                "score": score,
-                "counts": counts,
-                "time": it.get("created_time", ""),
-            }
-        )
+def _render_submission_table(items):
     header = st.columns([1.1, 1, 1.4, 1, 1.8, 1, 1.6])
     for h, col in zip(
         ["提交编号", "用户", "题目", "语言", "状态", "分数", "时间"], header
     ):
         col.markdown(f"**{h}**")
-    for r in rows:
+    for it in items:
+        sid = it["submission_id"]
+        verdict, score, counts = _submission_verdict(
+            sid, it["status"], it.get("score"), it.get("counts")
+        )
         c = st.columns([1.1, 1, 1.4, 1, 1.8, 1, 1.6])
-        c[0].button(f"#{r['sid']}", key=f"sid_{r['sid']}", on_click=_nav, args=("submission", None, r["sid"]))
-        c[1].write(r["uid"])
-        c[2].button(r["pid"], key=f"pid_{r['sid']}", on_click=_nav, args=("problem_detail", r["pid"], None))
-        c[3].write(r["lang"])
-        bg, fg = _color(r["score"], r["counts"])
-        c[4].markdown(badge(r["verdict"], bg, fg), unsafe_allow_html=True)
-        c[5].write(f'{r["score"]}/{r["counts"]}' if r["counts"] is not None else "-")
-        c[6].write(r["time"])
+        c[0].button(f"#{sid}", key=f"sid_{sid}", on_click=_nav, args=("submission", None, sid))
+        c[1].write(it["user_id"])
+        c[2].button(it["problem_id"], key=f"pid_{sid}", on_click=_nav, args=("problem_detail", it["problem_id"], None))
+        c[3].write(it["language"])
+        bg, fg = _color(score, counts)
+        c[4].markdown(badge(verdict, bg, fg), unsafe_allow_html=True)
+        c[5].write(f"{score}/{counts}" if counts is not None else "-")
+        c[6].write(it.get("created_time", ""))
+
+
+def submissions_list_page(pid=None):
+    st.subheader("提交记录")
+    user = current_user()
+    if user is None:
+        st.info("请先登录")
+        return
+    is_admin = user["role"] == "admin"
+
+    okp, problems = api("GET", "/api/problems/", silent=True)
+    pids = [p["id"] for p in problems] if problems else []
+
+    # —— 筛选条件 ——
+    f1, f2, f3, f4 = st.columns([2, 1.6, 1.6, 1], gap="small")
+    with f1:
+        opts = ["全部题目"] + pids
+        idx = opts.index(pid) if pid in opts else 0
+        problem_sel = st.selectbox("题目", opts, index=idx, key="sl_problem")
+    with f2:
+        status_sel = st.selectbox(
+            "状态", ["全部", "pending", "success", "error"], key="sl_status"
+        )
+    with f3:
+        if is_admin:
+            user_sel = st.text_input("用户ID（留空=全部）", key="sl_user")
+        else:
+            user_sel = user["user_id"]
+    with f4:
+        page_size = st.selectbox("每页", [10, 20, 50], key="sl_psize")
+
+    if st.button("查询", key="sl_query", type="primary"):
+        st.session_state.sl_page = 1
+        st.rerun()
+
+    page = int(st.session_state.get("sl_page", 1))
+
+    params = {}
+    if problem_sel != "全部题目":
+        params["problem_id"] = problem_sel
+    if status_sel != "全部":
+        params["status"] = status_sel
+    if is_admin:
+        if user_sel.strip():
+            params["user_id"] = user_sel.strip()
+    else:
+        params["user_id"] = user["user_id"]
+
+    if not params.get("user_id") and not params.get("problem_id"):
+        st.info("请至少选择一个筛选条件（题目或用户）")
+        return
+
+    params["page"] = page
+    params["page_size"] = page_size
+
+    ok, data = api("GET", "/api/submissions/", params=params, silent=True)
+    if not ok or not data:
+        return
+    total = data.get("total", 0)
+    items = data.get("submissions", [])
+    st.caption(f"共 {total} 条记录")
+
+    if items:
+        _render_submission_table(items)
+    else:
+        st.info("该页暂无记录")
+
+    # —— 分页 ——
+    pc1, pc2, pc3 = st.columns([1, 2, 1], gap="small")
+    if pc1.button("← 上一页", key="sl_prev", disabled=(page <= 1)):
+        st.session_state.sl_page = page - 1
+        st.rerun()
+    pc2.markdown(f"第 **{page}** 页")
+    if pc3.button("下一页 →", key="sl_next", disabled=(page * page_size >= total)):
+        st.session_state.sl_page = page + 1
+        st.rerun()
 
 
 def _submission_verdict(sid, status, score, counts):
@@ -946,8 +995,8 @@ sid = st.session_state.get("sid")
 
 if page == "problem_detail":
     problem_detail_page(pid)
-elif page == "problem_records":
-    problem_records_page(pid)
+elif page == "submissions":
+    submissions_list_page(pid)
 elif page == "submission":
     submission_page(sid)
 elif page == "profile":
